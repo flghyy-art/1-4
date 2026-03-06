@@ -2,56 +2,138 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>四宫格拆分预览</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>四宫格全自动拆分工具</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #f2f2f7; display: flex; justify-content: center; padding: 20px; }
-        .container { max-width: 400px; width: 100%; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; }
-        .upload-area { border: 2px dashed #007AFF; border-radius: 15px; padding: 20px; margin: 15px 0; color: #007AFF; font-size: 14px; cursor: pointer; }
-        .btn { background: #007AFF; color: white; border: none; width: 100%; padding: 12px; border-radius: 10px; font-weight: bold; margin-bottom: 10px; }
-        .btn-all { background: #34C759; display: none; }
-        .grid-sim { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-        .card-sim { background: #eee; height: 100px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; flex-direction: column; }
-        .save-label { color: #007AFF; font-size: 10px; margin-top: 5px; font-weight: bold; }
+        :root { --ios-blue: #007AFF; --ios-green: #34C759; }
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; margin: 0; padding: 20px; color: #1c1c1e; }
+        .container { max-width: 500px; margin: 0 auto; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px); border-radius: 20px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .upload-area { border: 2px dashed #c7c7cc; border-radius: 15px; padding: 30px; margin: 20px 0; cursor: pointer; text-align: center; }
+        .main-btn { background: var(--ios-blue); color: white; border: none; width: 100%; padding: 15px; border-radius: 12px; font-size: 17px; font-weight: 600; margin-bottom: 10px; }
+        .main-btn:disabled { background: #aeaeb2; }
+        .all-download-btn { background: var(--ios-green); margin-top: 10px; display: none; }
+        #status { font-size: 14px; color: #8e8e93; margin-bottom: 10px; text-align: center; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+        .card { background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid #e5e5ea; }
+        video { width: 100%; background: #000; display: block; }
+        .save-btn { background: #f2f2f7; color: var(--ios-blue); border: none; width: 100%; padding: 8px; font-size: 13px; font-weight: 600; }
+        #sourceVideo { display: none; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h3>🎬 视频四宫格拆分</h3>
-        <p style="font-size: 12px; color: #8e8e93;">预览模式：模拟上传后的界面</p>
-        
-        <div class="upload-area">✅ 视频已加载: sample_video.mp4</div>
-        
-        <button class="btn" onclick="startSim()">开始一键拆分</button>
-        <button id="allBtn" class="btn btn-all">保存全部到相册</button>
 
-        <div id="status" style="font-size: 13px; color: #007AFF; margin: 10px 0;">等待开始...</div>
+<div class="container">
+    <h2 style="text-align:center;">🎬 视频四宫格拆分</h2>
+    <div id="status">请选择视频文件</div>
 
-        <div class="grid-sim" id="grid">
-            </div>
-    </div>
+    <label class="upload-area">
+        <div id="fileLabel">点击此处上传四宫格视频</div>
+        <input type="file" id="fileInput" accept="video/*" hidden>
+    </label>
 
-    <script>
-        function startSim() {
-            const status = document.getElementById('status');
-            const grid = document.getElementById('grid');
-            const allBtn = document.getElementById('allBtn');
-            const zones = ['左上', '右上', '左下', '右下'];
-            let i = 0;
+    <video id="sourceVideo" playsinline muted></video>
+    
+    <button id="processBtn" class="main-btn" disabled>开始一键拆分</button>
+    <button id="downloadAllBtn" class="main-btn all-download-btn">保存全部到文件App</button>
 
-            grid.innerHTML = '';
-            const timer = setInterval(() => {
-                if(i < zones.length) {
-                    status.innerText = `正在处理: ${zones[i]}...`;
-                    grid.innerHTML += `<div class="card-sim">🎥 ${zones[i]}画面<span class="save-label">保存成功</span></div>`;
-                    i++;
-                } else {
-                    clearInterval(timer);
-                    status.innerText = "✅ 全部处理完成！";
-                    allBtn.style.display = 'block';
-                }
-            }, 800);
+    <div class="grid" id="resultGrid"></div>
+    <p style="font-size: 11px; color: #999; text-align: center; margin-top: 15px;">完成后请在 Safari 下载菜单中查看视频<br>并统一存储到相册</p>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const sourceVideo = document.getElementById('sourceVideo');
+    const processBtn = document.getElementById('processBtn');
+    const downloadAllBtn = document.getElementById('downloadAllBtn');
+    const resultGrid = document.getElementById('resultGrid');
+    const status = document.getElementById('status');
+    const fileLabel = document.getElementById('fileLabel');
+
+    let processedBlobs = [];
+
+    fileInput.onchange = (e) => {
+        if (e.target.files[0]) {
+            sourceVideo.src = URL.createObjectURL(e.target.files[0]);
+            fileLabel.innerText = "已加载: " + e.target.files[0].name;
+            processBtn.disabled = false;
+            status.innerText = "准备就绪";
         }
-    </script>
+    };
+
+    processBtn.onclick = async () => {
+        processBtn.disabled = true;
+        resultGrid.innerHTML = '';
+        processedBlobs = [];
+        const zones = [
+            { n: '左上', x: 0, y: 0 }, { n: '右上', x: 1, y: 0 },
+            { n: '左下', x: 0, y: 1 }, { n: '右下', x: 1, y: 1 }
+        ];
+
+        for (let zone of zones) {
+            status.innerText = `正在处理 ${zone.n}... 请保持屏幕常亮`;
+            const blob = await captureZone(zone.x, zone.y);
+            processedBlobs.push({ name: zone.n, blob: blob });
+            addPreview(zone.n, blob);
+        }
+        status.innerText = "✅ 拆分完成！";
+        processBtn.disabled = false;
+        downloadAllBtn.style.display = 'block';
+    };
+
+    function captureZone(col, row) {
+        return new Promise(resolve => {
+            const w = sourceVideo.videoWidth / 2;
+            const h = sourceVideo.videoHeight / 2;
+            const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
+            const ctx = canvas.getContext('2d');
+            const stream = canvas.captureStream(30);
+            const recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
+            const chunks = [];
+
+            recorder.ondataavailable = e => chunks.push(e.data);
+            recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/mp4' }));
+
+            sourceVideo.currentTime = 0;
+            sourceVideo.play();
+            recorder.start();
+
+            const track = () => {
+                if (sourceVideo.paused || sourceVideo.ended) return recorder.stop();
+                ctx.drawImage(sourceVideo, col * w, row * h, w, h, 0, 0, w, h);
+                requestAnimationFrame(track);
+            };
+            track();
+        });
+    }
+
+    function addPreview(name, blob) {
+        const url = URL.createObjectURL(blob);
+        const div = document.createElement('div');
+        div.className = 'card';
+        div.innerHTML = `
+            <video src="${url}" playsinline controls></video>
+            <button class="save-btn" onclick="saveOne('${url}', '${name}')">单独保存</button>
+        `;
+        resultGrid.appendChild(div);
+    }
+
+    function saveOne(url, name) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `拆分_${name}.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => document.body.removeChild(a), 100);
+    }
+
+    downloadAllBtn.onclick = () => {
+        processedBlobs.forEach((item, index) => {
+            setTimeout(() => {
+                const url = URL.createObjectURL(item.blob);
+                saveOne(url, item.name);
+            }, index * 500); // 间隔半秒触发，防止系统拦截
+        });
+    };
+</script>
 </body>
 </html>
