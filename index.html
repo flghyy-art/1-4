@@ -1,149 +1,57 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<title>Grok Extend 四宫格拆分工具 - 修复版</title>
-<style>
-    body { font-family: system-ui; text-align: center; padding: 40px; background: #f8f9fa; margin:0; }
-    h1 { color: #1a73e8; }
-    #dropzone { border: 3px dashed #1a73e8; padding: 60px; margin: 30px auto; max-width: 600px; border-radius: 12px; background: white; }
-    .select-btn { 
-        display: block; width: 100%; max-width: 320px; margin: 20px auto; 
-        padding: 18px; font-size: 20px; background: #1a73e8; color: white; 
-        border: none; border-radius: 12px; cursor: pointer; 
-    }
-    .select-btn:active { background: #1557b0; }
-    button { padding: 14px 32px; font-size: 18px; background: #1a73e8; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 8px; }
-    button:disabled { background: #ccc; }
-    .progress { width: 80%; height: 12px; background: #ddd; margin: 20px auto; border-radius: 6px; overflow: hidden; }
-    .bar { height: 100%; width: 0%; background: #1a73e8; transition: width 0.3s; }
-    .downloads { margin-top: 30px; display: none; gap: 15px; flex-wrap: wrap; justify-content: center; }
-    .video-group { margin: 15px; padding: 10px; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .tip { font-size: 14px; color: #666; margin-top: 20px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>四宫格拆分预览</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f2f2f7; display: flex; justify-content: center; padding: 20px; }
+        .container { max-width: 400px; width: 100%; background: white; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); text-align: center; }
+        .upload-area { border: 2px dashed #007AFF; border-radius: 15px; padding: 20px; margin: 15px 0; color: #007AFF; font-size: 14px; cursor: pointer; }
+        .btn { background: #007AFF; color: white; border: none; width: 100%; padding: 12px; border-radius: 10px; font-weight: bold; margin-bottom: 10px; }
+        .btn-all { background: #34C759; display: none; }
+        .grid-sim { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+        .card-sim { background: #eee; height: 100px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #666; flex-direction: column; }
+        .save-label { color: #007AFF; font-size: 10px; margin-top: 5px; font-weight: bold; }
+    </style>
 </head>
 <body>
-<h1>🛠 Grok Extend 四宫格拆分工具 - 修复版</h1>
-<p>专为穿丝袜4角度视频设计，已修复点击问题</p>
-
-<div id="dropzone">
-    <p>拖拽视频到这里 或 点击下方大按钮</p>
-    <button class="select-btn" id="selectFileBtn">📁 选择视频文件</button>
-    <input type="file" id="fileInput" accept="video/*" style="display:none">
-</div>
-
-<button id="processBtn" disabled>🚀 一键拆分成4个独立视频</button>
-
-<div class="progress"><div id="progressBar" class="bar"></div></div>
-<p id="status">等待上传视频...</p>
-
-<div class="downloads" id="downloadArea"></div>
-
-<div class="tip">
-    💡 如果还是无法弹出选择框，请刷新页面或直接拖拽视频进来<br>
-    处理完后点击「📱 保存到相册」即可直接存入手机相册
-</div>
-
-<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
-<script>
-const { createFFmpeg, fetchFile } = FFmpeg;
-const ffmpeg = createFFmpeg({ log: true });
-
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-const selectFileBtn = document.getElementById('selectFileBtn');
-const processBtn = document.getElementById('processBtn');
-const progressBar = document.getElementById('progressBar');
-const status = document.getElementById('status');
-const downloadArea = document.getElementById('downloadArea');
-
-let videoFile = null;
-
-// 点击大按钮直接触发文件选择（修复核心）
-selectFileBtn.addEventListener('click', () => fileInput.click());
-
-fileInput.addEventListener('change', e => {
-    if (e.target.files[0]) handleFile(e.target.files[0]);
-});
-
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = '#34a853'; });
-dropzone.addEventListener('dragleave', () => dropzone.style.borderColor = '#1a73e8');
-dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.style.borderColor = '#1a73e8'; handleFile(e.dataTransfer.files[0]); });
-
-function handleFile(file) {
-    if (file && file.type.startsWith('video/')) {
-        videoFile = file;
-        dropzone.innerHTML = `<p>✅ 已加载：<strong>${file.name}</strong></p><button class="select-btn" id="selectFileBtn">📁 重新选择视频文件</button>`;
-        processBtn.disabled = false;
-        // 重新绑定新按钮
-        document.getElementById('selectFileBtn').addEventListener('click', () => fileInput.click());
-    }
-}
-
-processBtn.onclick = async () => {
-    // （后续处理逻辑保持不变，和之前完全一样）
-    if (!videoFile) return;
-    processBtn.disabled = true;
-    status.textContent = '首次加载引擎（约20秒）...';
-    progressBar.style.width = '20%';
-
-    if (!ffmpeg.isLoaded()) await ffmpeg.load();
-
-    status.textContent = '正在拆分4个角度...';
-    progressBar.style.width = '40%';
-
-    ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(videoFile));
-
-    const commands = [
-        ['-i', 'input.mp4', '-vf', 'crop=960:540:0:0,scale=1920:1080', '-c:a', 'copy', '正面单独视频.mp4'],
-        ['-i', 'input.mp4', '-vf', 'crop=960:540:960:0,scale=1920:1080', '-c:a', 'copy', '左侧单独视频.mp4'],
-        ['-i', 'input.mp4', '-vf', 'crop=960:540:0:540,scale=1920:1080', '-c:a', 'copy', '右侧单独视频.mp4'],
-        ['-i', 'input.mp4', '-vf', 'crop=960:540:960:540,scale=1920:1080', '-c:a', 'copy', '背面单独视频.mp4']
-    ];
-
-    for (let i = 0; i < 4; i++) {
-        await ffmpeg.run(...commands[i]);
-        progressBar.style.width = `${50 + i*12}%`;
-    }
-
-    status.textContent = '✅ 拆分完成！请点击下方按钮保存';
-    progressBar.style.width = '100%';
-
-    downloadArea.innerHTML = '';
-    const names = ['正面单独视频.mp4', '左侧单独视频.mp4', '右侧单独视频.mp4', '背面单独视频.mp4'];
-    
-    for (let i = 0; i < 4; i++) {
-        const data = ffmpeg.FS('readFile', commands[i][6]);
-        const blob = new Blob([data.buffer], { type: 'video/mp4' });
-        const url = URL.createObjectURL(blob);
-
-        const group = document.createElement('div');
-        group.className = 'video-group';
-        group.innerHTML = `<p><strong>${names[i]}</strong></p>`;
+    <div class="container">
+        <h3>🎬 视频四宫格拆分</h3>
+        <p style="font-size: 12px; color: #8e8e93;">预览模式：模拟上传后的界面</p>
         
-        const dlBtn = document.createElement('button');
-        dlBtn.textContent = '⬇️ 下载';
-        dlBtn.onclick = () => { const a = document.createElement('a'); a.href = url; a.download = names[i]; a.click(); };
+        <div class="upload-area">✅ 视频已加载: sample_video.mp4</div>
         
-        const shareBtn = document.createElement('button');
-        shareBtn.style.background = '#34a853';
-        shareBtn.textContent = '📱 保存到相册';
-        shareBtn.onclick = async () => {
-            const file = new File([data.buffer], names[i], { type: 'video/mp4' });
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                await navigator.share({ files: [file] });
-            } else {
-                alert('请使用「⬇️ 下载」按钮，然后手动保存到相册');
-            }
-        };
-        
-        group.appendChild(dlBtn);
-        group.appendChild(shareBtn);
-        downloadArea.appendChild(group);
-    }
-    downloadArea.style.display = 'flex';
-    processBtn.disabled = false;
-};
-</script>
+        <button class="btn" onclick="startSim()">开始一键拆分</button>
+        <button id="allBtn" class="btn btn-all">保存全部到相册</button>
+
+        <div id="status" style="font-size: 13px; color: #007AFF; margin: 10px 0;">等待开始...</div>
+
+        <div class="grid-sim" id="grid">
+            </div>
+    </div>
+
+    <script>
+        function startSim() {
+            const status = document.getElementById('status');
+            const grid = document.getElementById('grid');
+            const allBtn = document.getElementById('allBtn');
+            const zones = ['左上', '右上', '左下', '右下'];
+            let i = 0;
+
+            grid.innerHTML = '';
+            const timer = setInterval(() => {
+                if(i < zones.length) {
+                    status.innerText = `正在处理: ${zones[i]}...`;
+                    grid.innerHTML += `<div class="card-sim">🎥 ${zones[i]}画面<span class="save-label">保存成功</span></div>`;
+                    i++;
+                } else {
+                    clearInterval(timer);
+                    status.innerText = "✅ 全部处理完成！";
+                    allBtn.style.display = 'block';
+                }
+            }, 800);
+        }
+    </script>
 </body>
 </html>
