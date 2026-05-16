@@ -239,17 +239,19 @@
         progressFill.style.width = `${(idx/9)*100}%`;
         await ffmpeg.run('-i','input.mp4','-vf',`crop=${cw}:${ch}:${col*cw}:${row*ch}`,'-c:v','libx264','-preset','ultrafast','-c:a','copy',outName);
         const data = ffmpeg.FS('readFile', outName);
-        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-        downloadURLs.push({ url, name: `${NAMES[idx]}.mp4` });
+        const blob = new Blob([data.buffer], { type: 'video/mp4' });
+        const url = URL.createObjectURL(blob);
+        const file = new File([blob], `${NAMES[idx]}.mp4`, { type: 'video/mp4' });
+        downloadURLs.push({ url, file, name: `${NAMES[idx]}.mp4` });
         const cell = cells[idx];
         cell.className = 'dl-cell ready';
         cell.innerHTML = `<span class="dl-icon">↓</span><span>${NAMES[idx]}</span>`;
-        cell.addEventListener('click', () => triggerDownload(url, `${NAMES[idx]}.mp4`));
+        cell.addEventListener('click', () => shareOrDownload([file], url, `${NAMES[idx]}.mp4`));
         ffmpeg.FS('unlink', outName);
       }
       ffmpeg.FS('unlink', 'input.mp4');
       progressFill.style.width = '100%';
-      progressStatus.textContent = '✓ 全部完成，点击格子下载';
+      progressStatus.textContent = '✓ 完成！点击格子或全部保存到相册';
       document.getElementById('dlAllBtn').style.display = 'block';
     } catch(err) {
       progressStatus.textContent = '✗ 处理出错：' + err.message;
@@ -258,9 +260,33 @@
     btn.disabled = false;
   });
 
-  document.getElementById('dlAllBtn').addEventListener('click', () => {
-    downloadURLs.forEach(({ url, name }, i) => setTimeout(() => triggerDownload(url, name), i*300));
+  document.getElementById('dlAllBtn').addEventListener('click', async () => {
+    const files = downloadURLs.map(d => d.file);
+    if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title: '九宫格视频' });
+      } catch(e) {
+        if (e.name !== 'AbortError') console.error(e);
+      }
+    } else {
+      // 非 iOS 降级为逐个下载
+      downloadURLs.forEach(({ url, name }, i) =>
+        setTimeout(() => triggerDownload(url, name), i * 400)
+      );
+    }
   });
+
+  async function shareOrDownload(files, fallbackUrl, fallbackName) {
+    if (navigator.share && navigator.canShare && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files, title: fallbackName });
+        return;
+      } catch(e) {
+        if (e.name !== 'AbortError') console.error(e);
+      }
+    }
+    triggerDownload(fallbackUrl, fallbackName);
+  }
 
   function triggerDownload(url, name) {
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
