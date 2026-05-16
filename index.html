@@ -655,13 +655,14 @@
 
 <script>
 // ── Patterns ──────────────────────────────────────────────────────────────
+// 允许行首有可选括号前缀（如【第一章】[\第一章\]）
 const PATTERNS = {
-  zh_chapter: /^第[零一二三四五六七八九十百千万\d]+章/,
-  zh_num:     /^第\s*\d+\s*章/,
-  en_chapter: /^(Chapter|CHAPTER)\s+\d+/i,
-  hui:        /^第[零一二三四五六七八九十百千万\d]+回/,
-  juan:       /^卷[零一二三四五六七八九十百千万\d]+/,
-  auto:       /^(第[零一二三四五六七八九十百千万\d]+[章回节篇卷]|Chapter\s+\d+|卷[零一二三四五六七八九十百千万\d]+|\d+[\.\、]\s*\S)/im,
+  zh_chapter: /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+章/,
+  zh_num:     /^[\[【〔（(]?第\s*\d+\s*章/,
+  en_chapter: /^Chapter\s*\d+/i,
+  hui:        /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+回/,
+  juan:       /^[\[【〔（(]?卷[零一二三四五六七八九十百千万\d]+/,
+  auto:       /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+[章回节篇卷]|^Chapter\s*\d+|^[\[【〔（(]?卷[零一二三四五六七八九十百千万\d]+|^\d+[\.、]\s*\S/i,
 };
 
 let chapters = [];
@@ -748,35 +749,45 @@ zone.addEventListener('drop', e => {
 function splitText() {
   if (!rawText.trim()) { showToast('请先上传文本文件'); return; }
 
+  // 修复1：剥离 BOM；修复2：统一换行符（\r\n 和 \r 都转成 \n）
+  const normalized = rawText
+    .replace(/^\uFEFF/, '')       // 剥离 UTF-8 BOM
+    .replace(/\r\n/g, '\n')       // Windows 换行
+    .replace(/\r/g, '\n');        // 旧 Mac 换行
+
   const pattern = getPattern();
-  const lines = rawText.split('\n');
+  const lines = normalized.split('\n');
   const prefix = document.getElementById('prefix').value || 'Chapter';
 
   showProgress(0);
   chapters = [];
-
   let current = null;
 
-  lines.forEach((line, i) => {
-    if (pattern.test(line.trim())) {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed && pattern.test(trimmed)) {
+      // 新章节开始：先保存上一章
       if (current) chapters.push(current);
-      current = { title: line.trim(), lines: [line] };
+      current = { title: trimmed, lines: [line] };
     } else {
       if (current) {
+        // 当前章节内容继续追加（包括空行，保留原格式）
         current.lines.push(line);
-      } else {
-        if (line.trim() !== '') {
-          if (!current) {
-            current = { title: '序章 / 前言', lines: [line] };
-          }
-        }
+      } else if (trimmed) {
+        // 第一个章节标记之前的内容 → 前言
+        current = { title: '前言', lines: [line] };
       }
+      // 空行且 current 为 null 时直接跳过（文件开头空白行）
     }
-    if (i % 500 === 0) showProgress(Math.round((i / lines.length) * 80));
-  });
+
+    if (i % 1000 === 0) showProgress(Math.round((i / lines.length) * 80));
+  }
 
   if (current) chapters.push(current);
-  chapters = chapters.filter(c => c.lines.join('\n').trim().length > 10);
+  // 修复3：只过滤完全空的章节，不因内容短而丢弃
+  chapters = chapters.filter(c => c.lines.some(l => l.trim().length > 0));
 
   showProgress(100);
   setTimeout(() => {
@@ -933,4 +944,3 @@ function escAttr(s) {
 </script>
 </body>
 </html>
-
