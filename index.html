@@ -4,286 +4,81 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>九宫格分割器</title>
+
+  <!-- Fix SharedArrayBuffer on GitHub Pages -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./coi-serviceworker.js').then(reg => {
+        if (!crossOriginIsolated) {
+          reg.addEventListener('updatefound', () => {
+            reg.installing && reg.installing.addEventListener('statechange', e => {
+              if (e.target.state === 'activated') window.location.reload();
+            });
+          });
+          if (reg.active) window.location.reload();
+        }
+      }).catch(console.error);
+    }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>
 
   <style>
     :root {
-      --bg: #0a0a0a;
-      --surface: #111;
-      --border: #222;
-      --accent: #c8f135;
-      --text: #f0f0f0;
-      --muted: #555;
-      --radius: 4px;
+      --bg: #0a0a0a; --surface: #111; --border: #222;
+      --accent: #c8f135; --text: #f0f0f0; --muted: #555; --radius: 4px;
     }
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Syne', sans-serif;
-      min-height: 100vh;
-      padding: 0;
-    }
-
-    /* ── Header ── */
+    body { background: var(--bg); color: var(--text); font-family: 'Syne', sans-serif; min-height: 100vh; }
     header {
-      border-bottom: 1px solid var(--border);
-      padding: 20px 32px;
-      display: flex;
-      align-items: baseline;
-      gap: 16px;
+      border-bottom: 1px solid var(--border); padding: 20px 32px;
+      display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
     }
-    header h1 {
-      font-size: 1.1rem;
-      font-weight: 800;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    header span {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-
-    /* ── Main layout ── */
-    main {
-      display: grid;
-      grid-template-columns: 1fr 320px;
-      gap: 0;
-      min-height: calc(100vh - 61px);
-    }
-
-    /* ── Left: upload + preview ── */
-    .left {
-      border-right: 1px solid var(--border);
-      padding: 32px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
+    header h1 { font-size: 1.1rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    header span { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--muted); }
+    main { display: grid; grid-template-columns: 1fr 320px; min-height: calc(100vh - 61px); }
+    .left { border-right: 1px solid var(--border); padding: 32px; display: flex; flex-direction: column; gap: 24px; }
     .upload-zone {
-      border: 1px dashed var(--border);
-      border-radius: var(--radius);
-      padding: 48px 24px;
-      text-align: center;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-      position: relative;
+      border: 1px dashed var(--border); border-radius: var(--radius);
+      padding: 48px 24px; text-align: center; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s; position: relative;
     }
-    .upload-zone:hover, .upload-zone.over {
-      border-color: var(--accent);
-      background: rgba(200,241,53,0.03);
-    }
-    .upload-zone input {
-      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
-    }
-    .upload-zone .icon {
-      font-size: 2.5rem;
-      margin-bottom: 12px;
-      display: block;
-    }
-    .upload-zone p {
-      font-size: 0.95rem;
-      color: var(--muted);
-      line-height: 1.6;
-    }
-    .upload-zone strong {
-      color: var(--text);
-    }
-
-    /* Grid preview */
-    .grid-preview {
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .grid-label {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.7rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-    }
-    .grid-canvas-wrap {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 3px;
-      border-radius: var(--radius);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-    .grid-canvas-wrap canvas {
-      display: block;
-      width: 100%;
-      height: auto;
-      cursor: default;
-    }
-
-    /* ── Right: controls ── */
-    .right {
-      padding: 32px 24px;
-      display: flex;
-      flex-direction: column;
-      gap: 24px;
-    }
-
-    .section-title {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.65rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 12px;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 8px;
-    }
-
-    /* File info */
-    .file-info {
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .info-row span:first-child {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.7rem;
-      color: var(--muted);
-    }
-    .info-row span:last-child {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.75rem;
-      color: var(--text);
-    }
-
-    /* Start button */
-    .btn-primary {
-      background: var(--accent);
-      color: #000;
-      border: none;
-      padding: 14px 24px;
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-radius: var(--radius);
-      cursor: pointer;
-      width: 100%;
-      transition: opacity 0.15s, transform 0.1s;
-    }
+    .upload-zone:hover, .upload-zone.over { border-color: var(--accent); background: rgba(200,241,53,0.03); }
+    .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-zone .icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
+    .upload-zone p { font-size: 0.95rem; color: var(--muted); line-height: 1.6; }
+    .upload-zone strong { color: var(--text); }
+    .grid-preview { display: none; flex-direction: column; gap: 8px; }
+    .grid-label { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+    .grid-canvas-wrap { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    .grid-canvas-wrap canvas { display: block; width: 100%; height: auto; }
+    .right { padding: 32px 24px; display: flex; flex-direction: column; gap: 24px; }
+    .section-title { font-family: 'DM Mono', monospace; font-size: 0.65rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+    .file-info { display: none; flex-direction: column; gap: 8px; }
+    .info-row { display: flex; justify-content: space-between; align-items: center; }
+    .info-row span:first-child { font-family: 'DM Mono', monospace; font-size: 0.7rem; color: var(--muted); }
+    .info-row span:last-child { font-family: 'DM Mono', monospace; font-size: 0.75rem; color: var(--text); }
+    .btn-primary { background: var(--accent); color: #000; border: none; padding: 14px 24px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; border-radius: var(--radius); cursor: pointer; width: 100%; transition: opacity 0.15s, transform 0.1s; }
     .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-    .btn-primary:active:not(:disabled) { transform: translateY(0); }
-    .btn-primary:disabled {
-      background: var(--border);
-      color: var(--muted);
-      cursor: not-allowed;
-    }
-
-    /* Progress */
+    .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
     .progress-wrap { display: none; }
-    .progress-status {
-      font-family: 'DM Mono', monospace;
-      font-size: 0.72rem;
-      color: var(--muted);
-      margin-bottom: 8px;
-      min-height: 1.2em;
-    }
-    .progress-track {
-      height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: var(--accent);
-      width: 0%;
-      transition: width 0.4s cubic-bezier(.4,0,.2,1);
-    }
-
-    /* Downloads */
+    .progress-status { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--muted); margin-bottom: 8px; min-height: 1.2em; }
+    .progress-track { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.4s cubic-bezier(.4,0,.2,1); }
     .downloads { display: none; }
-    .download-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 4px;
-      margin-top: 8px;
-    }
-    .dl-cell {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      aspect-ratio: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      text-decoration: none;
-      color: var(--text);
-      font-family: 'DM Mono', monospace;
-      font-size: 0.65rem;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .dl-cell:hover {
-      border-color: var(--accent);
-      background: rgba(200,241,53,0.06);
-    }
+    .download-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 8px; }
+    .dl-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 0.65rem; transition: border-color 0.2s, background 0.2s; cursor: default; }
+    .dl-cell.pending { opacity: 0.3; }
+    .dl-cell.ready { border-color: var(--accent); opacity: 1; cursor: pointer; }
+    .dl-cell.ready:hover { background: rgba(200,241,53,0.06); }
     .dl-cell .dl-icon { font-size: 1.2rem; }
-    .dl-cell.pending {
-      opacity: 0.3;
-      pointer-events: none;
-    }
-    .dl-cell.ready {
-      border-color: var(--accent);
-      opacity: 1;
-    }
-
-    .btn-dl-all {
-      background: transparent;
-      color: var(--accent);
-      border: 1px solid var(--accent);
-      padding: 10px 16px;
-      font-family: 'Syne', sans-serif;
-      font-weight: 700;
-      font-size: 0.8rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      border-radius: var(--radius);
-      cursor: pointer;
-      width: 100%;
-      margin-top: 8px;
-      transition: background 0.15s, color 0.15s;
-    }
-    .btn-dl-all:hover {
-      background: var(--accent);
-      color: #000;
-    }
-
-    /* Status badge */
-    .badge {
-      display: inline-block;
-      font-family: 'DM Mono', monospace;
-      font-size: 0.65rem;
-      padding: 3px 8px;
-      border-radius: 20px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      color: var(--muted);
-    }
+    .btn-dl-all { background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; border-radius: var(--radius); cursor: pointer; width: 100%; margin-top: 8px; transition: background 0.15s, color 0.15s; }
+    .btn-dl-all:hover { background: var(--accent); color: #000; }
+    .badge { display: inline-block; font-family: 'DM Mono', monospace; font-size: 0.65rem; padding: 3px 8px; border-radius: 20px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); }
     .badge.ready { border-color: var(--accent); color: var(--accent); }
-
-    /* Responsive */
+    .badge.error { border-color: #f44; color: #f44; }
     @media (max-width: 640px) {
       main { grid-template-columns: 1fr; }
       .left { border-right: none; border-bottom: 1px solid var(--border); padding: 20px; }
@@ -292,7 +87,6 @@
     }
   </style>
 </head>
-
 <body>
 
 <header>
@@ -302,26 +96,19 @@
 </header>
 
 <main>
-  <!-- Left -->
   <section class="left">
-
     <div class="upload-zone" id="uploadZone">
       <input type="file" id="fileInput" accept="video/*" />
       <span class="icon">▤</span>
       <p><strong>点击或拖入视频文件</strong><br>支持 MP4 · MOV · AVI 等格式</p>
     </div>
-
     <div class="grid-preview" id="gridPreview">
       <span class="grid-label">预览 — 分割效果</span>
       <div class="grid-canvas-wrap" id="gridCanvases"></div>
     </div>
-
   </section>
 
-  <!-- Right -->
   <section class="right">
-
-    <!-- File info -->
     <div>
       <div class="section-title">文件信息</div>
       <div class="file-info" id="fileInfo">
@@ -331,26 +118,17 @@
         <div class="info-row"><span>单格尺寸</span><span id="infoCell">—</span></div>
       </div>
     </div>
-
-    <!-- Start -->
     <button class="btn-primary" id="splitBtn" disabled>开始分割</button>
-
-    <!-- Progress -->
     <div class="progress-wrap" id="progressWrap">
       <div class="section-title">进度</div>
       <div class="progress-status" id="progressStatus">准备中...</div>
-      <div class="progress-track">
-        <div class="progress-fill" id="progressFill"></div>
-      </div>
+      <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
     </div>
-
-    <!-- Downloads -->
     <div class="downloads" id="downloadsSection">
       <div class="section-title">下载</div>
       <div class="download-grid" id="downloadGrid"></div>
       <button class="btn-dl-all" id="dlAllBtn" style="display:none">↓ 全部下载</button>
     </div>
-
   </section>
 </main>
 
@@ -360,37 +138,27 @@
     log: false,
     corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
   });
-
-  const NAMES = [
-    '左上','中上','右上',
-    '左中','正中','右中',
-    '左下','中下','右下'
-  ];
-
-  let selectedFile = null;
-  let videoW = 0, videoH = 0;
-  let isReady = false;
+  const NAMES = ['左上','中上','右上','左中','正中','右中','左下','中下','右下'];
+  let selectedFile = null, videoW = 0, videoH = 0, isReady = false;
   const downloadURLs = [];
 
-  // ── Load FFmpeg ──────────────────────────────
   (async () => {
+    const badge = document.getElementById('ffmpegBadge');
     try {
       await ffmpeg.load();
       isReady = true;
-      const badge = document.getElementById('ffmpegBadge');
       badge.textContent = '✓ FFmpeg 就绪';
       badge.classList.add('ready');
       tryEnableBtn();
     } catch(e) {
-      document.getElementById('ffmpegBadge').textContent = '✗ 加载失败';
+      badge.textContent = '✗ 加载失败';
+      badge.classList.add('error');
       console.error(e);
     }
   })();
 
-  // ── Upload zone ──────────────────────────────
   const zone = document.getElementById('uploadZone');
   const fileInput = document.getElementById('fileInput');
-
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('over'));
   zone.addEventListener('drop', e => {
@@ -401,55 +169,37 @@
   fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
 
   function loadFile(file) {
-    selectedFile = file;
-    downloadURLs.length = 0;
+    selectedFile = file; downloadURLs.length = 0;
     document.getElementById('downloadsSection').style.display = 'none';
     document.getElementById('progressWrap').style.display = 'none';
     document.getElementById('dlAllBtn').style.display = 'none';
-
-    // File info
     document.getElementById('infoName').textContent = file.name.length > 18 ? file.name.slice(0,16)+'…' : file.name;
     document.getElementById('infoSize').textContent = formatSize(file.size);
-    document.getElementById('fileInfo').style.display = 'flex';
-    document.getElementById('fileInfo').style.flexDirection = 'column';
-
-    // Load video for dimensions + preview
+    const fi = document.getElementById('fileInfo');
+    fi.style.display = 'flex'; fi.style.flexDirection = 'column';
     const video = document.createElement('video');
     video.src = URL.createObjectURL(file);
-    video.muted = true;
-    video.playsInline = true;
+    video.muted = true; video.playsInline = true;
     video.addEventListener('loadedmetadata', () => {
-      videoW = video.videoWidth;
-      videoH = video.videoHeight;
-      const cw = Math.floor(videoW / 3);
-      const ch = Math.floor(videoH / 3);
+      videoW = video.videoWidth; videoH = video.videoHeight;
       document.getElementById('infoDim').textContent = `${videoW} × ${videoH}`;
-      document.getElementById('infoCell').textContent = `${cw} × ${ch}`;
+      document.getElementById('infoCell').textContent = `${Math.floor(videoW/3)} × ${Math.floor(videoH/3)}`;
       video.currentTime = 1;
     });
     video.addEventListener('seeked', () => drawGrid(video));
-    video.addEventListener('error', () => { video.currentTime = 0; });
   }
 
   function drawGrid(video) {
-    const cw = Math.floor(video.videoWidth / 3);
-    const ch = Math.floor(video.videoHeight / 3);
+    const cw = Math.floor(video.videoWidth/3), ch = Math.floor(video.videoHeight/3);
     const wrap = document.getElementById('gridCanvases');
     wrap.innerHTML = '';
-
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        const canvas = document.createElement('canvas');
-        canvas.width = cw;
-        canvas.height = ch;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, col * cw, row * ch, cw, ch, 0, 0, cw, ch);
-        wrap.appendChild(canvas);
-      }
+    for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+      const canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      canvas.getContext('2d').drawImage(video, col*cw, row*ch, cw, ch, 0, 0, cw, ch);
+      wrap.appendChild(canvas);
     }
-
-    const preview = document.getElementById('gridPreview');
-    preview.style.display = 'flex';
+    document.getElementById('gridPreview').style.display = 'flex';
     tryEnableBtn();
   }
 
@@ -457,105 +207,64 @@
     document.getElementById('splitBtn').disabled = !(isReady && selectedFile && videoW > 0);
   }
 
-  // ── Split ────────────────────────────────────
   document.getElementById('splitBtn').addEventListener('click', async () => {
     if (!selectedFile || !isReady) return;
-
     const btn = document.getElementById('splitBtn');
     btn.disabled = true;
-
     const progressWrap = document.getElementById('progressWrap');
     const progressStatus = document.getElementById('progressStatus');
     const progressFill = document.getElementById('progressFill');
     const downloadsSection = document.getElementById('downloadsSection');
     const downloadGrid = document.getElementById('downloadGrid');
-
     progressWrap.style.display = 'block';
     downloadsSection.style.display = 'block';
-    downloadGrid.innerHTML = '';
-    downloadURLs.length = 0;
-
-    // Build placeholder cells
+    downloadGrid.innerHTML = ''; downloadURLs.length = 0;
     const cells = [];
     for (let i = 0; i < 9; i++) {
       const el = document.createElement('div');
       el.className = 'dl-cell pending';
       el.innerHTML = `<span class="dl-icon">⋯</span><span>${NAMES[i]}</span>`;
-      downloadGrid.appendChild(el);
-      cells.push(el);
+      downloadGrid.appendChild(el); cells.push(el);
     }
-
-    const cw = Math.floor(videoW / 3);
-    const ch = Math.floor(videoH / 3);
-
+    const cw = Math.floor(videoW/3), ch = Math.floor(videoH/3);
     try {
       progressStatus.textContent = '写入文件中...';
       ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(selectedFile));
-
-      for (let row = 0; row < 3; row++) {
-        for (let col = 0; col < 3; col++) {
-          const idx = row * 3 + col;
-          const outName = `out_${row}_${col}.mp4`;
-
-          progressStatus.textContent = `处理第 ${idx + 1} / 9 片段 — ${NAMES[idx]}`;
-          progressFill.style.width = `${(idx / 9) * 100}%`;
-
-          await ffmpeg.run(
-            '-i', 'input.mp4',
-            '-vf', `crop=${cw}:${ch}:${col * cw}:${row * ch}`,
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-c:a', 'copy',
-            outName
-          );
-
-          const data = ffmpeg.FS('readFile', outName);
-          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
-          downloadURLs.push({ url, name: `${NAMES[idx]}.mp4` });
-
-          // Update cell to ready
-          const cell = cells[idx];
-          cell.className = 'dl-cell ready';
-          cell.innerHTML = `<span class="dl-icon">↓</span><span>${NAMES[idx]}</span>`;
-          cell.style.cursor = 'pointer';
-          cell.addEventListener('click', () => triggerDownload(url, `${NAMES[idx]}.mp4`));
-
-          ffmpeg.FS('unlink', outName);
-        }
+      for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+        const idx = row*3+col, outName = `out_${row}_${col}.mp4`;
+        progressStatus.textContent = `处理第 ${idx+1} / 9 — ${NAMES[idx]}`;
+        progressFill.style.width = `${(idx/9)*100}%`;
+        await ffmpeg.run('-i','input.mp4','-vf',`crop=${cw}:${ch}:${col*cw}:${row*ch}`,'-c:v','libx264','-preset','ultrafast','-c:a','copy',outName);
+        const data = ffmpeg.FS('readFile', outName);
+        const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+        downloadURLs.push({ url, name: `${NAMES[idx]}.mp4` });
+        const cell = cells[idx];
+        cell.className = 'dl-cell ready';
+        cell.innerHTML = `<span class="dl-icon">↓</span><span>${NAMES[idx]}</span>`;
+        cell.addEventListener('click', () => triggerDownload(url, `${NAMES[idx]}.mp4`));
+        ffmpeg.FS('unlink', outName);
       }
-
       ffmpeg.FS('unlink', 'input.mp4');
       progressFill.style.width = '100%';
-      progressStatus.textContent = '✓ 全部完成';
-
+      progressStatus.textContent = '✓ 全部完成，点击格子下载';
       document.getElementById('dlAllBtn').style.display = 'block';
     } catch(err) {
       progressStatus.textContent = '✗ 处理出错：' + err.message;
       console.error(err);
     }
-
     btn.disabled = false;
   });
 
-  // ── Download helpers ─────────────────────────
   document.getElementById('dlAllBtn').addEventListener('click', () => {
-    downloadURLs.forEach(({ url, name }, i) => {
-      setTimeout(() => triggerDownload(url, name), i * 300);
-    });
+    downloadURLs.forEach(({ url, name }, i) => setTimeout(() => triggerDownload(url, name), i*300));
   });
 
   function triggerDownload(url, name) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = name; a.click();
   }
-
-  function formatSize(bytes) {
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  function formatSize(b) {
+    return b < 1024*1024 ? (b/1024).toFixed(1)+' KB' : (b/(1024*1024)).toFixed(1)+' MB';
   }
 </script>
-
 </body>
 </html>
