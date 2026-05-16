@@ -1,176 +1,935 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Grok Video Splitter</title>
-    <style>
-        :root { 
-            --bg-deep: #000000;          /* 纯黑背景 */
-            --card-dark: #1A1A1A;       /* 卡片深灰 */
-            --primary-purple: #B566FF; /* 亮紫色（按钮） */
-            --ios-blue: #007AFF;         /* Grok 文本框边框蓝 */
-            --text-main: #FFFFFF;        /* 白色主文本 */
-            --text-muted: #8E8E93;       /* 灰色辅助文本 */
-        }
-        
-        body { font-family: -apple-system, sans-serif; background: var(--bg-deep); margin: 0; padding: 20px; display: flex; justify-content: center; color: var(--text-main); }
-        .app-container { width: 100%; max-width: 440px; }
-        
-        /* 顶部标题 - 居中，AI 感 */
-        .header { text-align: center; margin-bottom: 24px; margin-top: 10px; }
-        .header h1 { font-size: 26px; margin: 0; font-weight: 700; background: linear-gradient(90deg, #FFFFFF, var(--primary-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .header p { font-size: 14px; color: var(--text-muted); margin: 5px 0 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>章节切割器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600&family=Playfair+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root {
+    --ink: #1a1208;
+    --paper: #f5f0e8;
+    --aged: #e8dfc8;
+    --rust: #c0392b;
+    --gold: #b8860b;
+    --muted: #7a6e5f;
+    --shadow: rgba(26,18,8,0.15);
+    --line: rgba(26,18,8,0.12);
+  }
 
-        /* 主卡片 - 深色卡片 */
-        .card { background: var(--card-dark); border-radius: 20px; padding: 24px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05); }
-        
-        /* 上传区域 - Grok 输入框蓝边框风格 */
-        .upload-zone { border: 2px solid var(--ios-blue); border-radius: 14px; padding: 30px 15px; text-align: center; cursor: pointer; display: block; transition: 0.3s; position: relative; overflow: hidden; }
-        .upload-zone:active { background: rgba(0,122,255,0.05); }
-        .upload-icon { font-size: 32px; display: block; margin-bottom: 10px; opacity: 0.8; }
-        #fileLabel { font-size: 15px; color: var(--text-muted); font-weight: 500; }
-        
-        /* 核心大按钮 - Grok 亮紫色 */
-        .main-action-btn { 
-            width: 100%; padding: 18px; border: none; border-radius: 50px; /* 超圆角 */
-            font-size: 17px; font-weight: 700; cursor: pointer; 
-            transition: all 0.3s; 
-            margin-top: 20px; display: none; /* 初始隐藏 */
-            background: var(--primary-purple); color: #FFF;
-            box-shadow: 0 5px 20px rgba(181,102,255,0.3);
-        }
-        .main-action-btn:active { transform: scale(0.96); opacity: 0.9; }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
-        /* 状态文本 */
-        #status { font-size: 14px; text-align: center; color: var(--primary-purple); margin-top: 15px; min-height: 20px; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Noto Serif SC', serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
 
-        /* 结果展示 */
-        .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
-        .video-item { background: #000; border-radius: 12px; overflow: hidden; position: relative; aspect-ratio: 1/1; border: 1px solid rgba(255,255,255,0.1); }
-        video { width: 100%; height: 100%; object-fit: cover; }
-        .tag { position: absolute; top: 6px; left: 6px; background: rgba(0,0,0,0.6); color: #FFF; font-size: 10px; padding: 2px 6px; border-radius: 4px; backdrop-filter: blur(4px); }
+  /* Grain texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.6;
+  }
 
-        #sourceVideo { display: none; }
-    </style>
+  header {
+    position: relative;
+    padding: 48px 24px 32px;
+    border-bottom: 1px solid var(--line);
+    text-align: center;
+    background: linear-gradient(180deg, var(--aged) 0%, transparent 100%);
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 2px;
+    background: var(--rust);
+  }
+
+  .logo {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(28px, 8vw, 42px);
+    font-style: italic;
+    letter-spacing: -0.5px;
+    line-height: 1;
+    color: var(--ink);
+  }
+
+  .logo span {
+    color: var(--rust);
+    font-style: normal;
+  }
+
+  .tagline {
+    margin-top: 8px;
+    font-size: 12px;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 300;
+  }
+
+  main {
+    position: relative;
+    z-index: 1;
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+
+  /* Section labels */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  /* Upload zone */
+  .upload-zone {
+    position: relative;
+    margin-bottom: 28px;
+    border: 2px dashed var(--line);
+    border-radius: 4px;
+    background: #fff;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: pointer;
+    overflow: hidden;
+  }
+
+  .upload-zone.drag-over {
+    border-color: var(--rust);
+    background: rgba(192,57,43,0.04);
+  }
+
+  .upload-zone.has-file {
+    border-style: solid;
+    border-color: var(--rust);
+    background: rgba(192,57,43,0.03);
+  }
+
+  .upload-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 24px;
+    gap: 12px;
+    pointer-events: none;
+  }
+
+  .upload-icon {
+    font-size: 40px;
+    line-height: 1;
+    transition: transform 0.2s;
+  }
+
+  .upload-zone.drag-over .upload-icon { transform: scale(1.15); }
+
+  .upload-title {
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--ink);
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  .upload-sub {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.5px;
+    text-align: center;
+  }
+
+  .upload-zone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    font-size: 0;
+  }
+
+  /* File info card */
+  .file-info {
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 18px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    margin-bottom: 20px;
+  }
+
+  .file-info.visible { display: flex; }
+
+  .file-icon-box {
+    width: 40px;
+    height: 48px;
+    background: var(--aged);
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+    position: relative;
+  }
+
+  .file-icon-box::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 0; height: 0;
+    border-style: solid;
+    border-width: 0 10px 10px 0;
+    border-color: transparent var(--paper) transparent transparent;
+  }
+
+  .file-meta { flex: 1; overflow: hidden; }
+
+  .file-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink);
+  }
+
+  .file-size {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+
+  .file-remove {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+    flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .file-remove:active { color: var(--rust); }
+
+  /* Settings row */
+  .settings-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+
+  @media (max-width: 400px) {
+    .settings-row { grid-template-columns: 1fr; }
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .field label {
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .field input, .field select {
+    padding: 10px 12px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  .field input:focus, .field select:focus {
+    border-color: var(--rust);
+  }
+
+  .field select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a6e5f' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    flex: 1;
+    min-width: 120px;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 2px;
+    font-family: 'Noto Serif SC', serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.18s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    -webkit-tap-highlight-color: transparent;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .btn-primary:active { background: #000; transform: scale(0.98); }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--ink);
+  }
+
+  .btn-secondary:active { background: var(--aged); transform: scale(0.98); }
+
+  .btn-rust {
+    background: var(--rust);
+    color: #fff;
+  }
+
+  .btn-rust:active { background: #a93226; transform: scale(0.98); }
+
+  .btn:disabled {
+    opacity: 0.35;
+    pointer-events: none;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    gap: 0;
+    margin-bottom: 24px;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+    background: #fff;
+  }
+
+  .stat {
+    flex: 1;
+    padding: 12px 8px;
+    text-align: center;
+    border-right: 1px solid var(--line);
+  }
+
+  .stat:last-child { border-right: none; }
+
+  .stat-num {
+    font-family: 'Playfair Display', serif;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--rust);
+    line-height: 1;
+    display: block;
+  }
+
+  .stat-lbl {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 4px;
+    display: block;
+  }
+
+  /* Chapter list */
+  .chapters-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chapter-item {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+  }
+
+  .chapter-item:active { box-shadow: 0 2px 12px var(--shadow); }
+
+  .chapter-header {
+    display: flex;
+    align-items: center;
+    padding: 14px 16px;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .chapter-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--rust);
+    background: rgba(192,57,43,0.08);
+    padding: 3px 8px;
+    border-radius: 2px;
+    white-space: nowrap;
+    min-width: 38px;
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+
+  .chapter-title {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .chapter-words {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  .chapter-dl {
+    padding: 3px 6px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    font-size: 16px;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .chapter-dl:active { background: var(--aged); color: var(--rust); }
+
+  .chapter-preview {
+    display: none;
+    padding: 0 16px 14px;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    max-height: 160px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .chapter-preview.open { display: block; }
+
+  /* Empty state */
+  .empty-state {
+    text-align: center;
+    padding: 56px 20px;
+    color: var(--muted);
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.4;
+    display: block;
+  }
+
+  .empty-state p {
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--ink);
+    color: var(--paper);
+    padding: 12px 24px;
+    border-radius: 24px;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    z-index: 999;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Progress bar */
+  .progress-wrap {
+    height: 3px;
+    background: var(--line);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .progress-wrap.visible { display: block; }
+
+  .progress-bar {
+    height: 100%;
+    background: var(--rust);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .chapter-item {
+    animation: fadeIn 0.25s ease both;
+  }
+</style>
 </head>
 <body>
 
-<div class="app-container">
-    <div class="header">
-        <h1>Grok Imagine Video</h1>
-        <p>四宫格智能拆分器</p>
-    </div>
+<header>
+  <div class="logo">章节<span>切割</span></div>
+  <div class="tagline">Chapter Splitter · Auto Download</div>
+</header>
 
-    <div class="card">
-        <label class="upload-zone" id="dropZone">
-            <span class="upload-icon">📂</span>
-            <span id="fileLabel">点击上传 MP4 视频...</span>
-            <input type="file" id="fileInput" accept="video/*" hidden>
-        </label>
-        
-        <div id="status"></div>
-        
-        <button id="processBtn" class="main-action-btn" style="display:none;">开始全自动拆分</button>
-        <button id="saveAllBtn" class="main-action-btn" style="display:none; background:var(--primary-purple);">📋 一键保存全部到相册</button>
-    </div>
+<main>
 
-    <div class="result-grid" id="resultGrid"></div>
-    <video id="sourceVideo" playsinline muted></video>
-</div>
+  <!-- Upload -->
+  <div class="section-label">上传文件</div>
+  <div class="upload-zone" id="uploadZone">
+    <input type="file" id="fileInput" accept=".txt,.md,.text" onchange="handleFileSelect(this.files[0])">
+    <div class="upload-inner">
+      <span class="upload-icon">📄</span>
+      <div class="upload-title">点击选择文件<br>或将文件拖拽至此</div>
+      <div class="upload-sub">支持 .txt · .md · .text · 最大 50MB</div>
+    </div>
+  </div>
+
+  <!-- File info -->
+  <div class="file-info" id="fileInfo">
+    <div class="file-icon-box">📄</div>
+    <div class="file-meta">
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-size" id="fileSize">—</div>
+    </div>
+    <button class="file-remove" onclick="removeFile()" title="移除文件">✕</button>
+  </div>
+
+  <!-- Settings -->
+  <div class="settings-row">
+    <div class="field">
+      <label>章节模式</label>
+      <select id="patternSelect" onchange="updateCustom()">
+        <option value="auto">🔍 自动识别</option>
+        <option value="zh_chapter">第X章（中文数字）</option>
+        <option value="zh_num">第N章（阿拉伯数字）</option>
+        <option value="en_chapter">Chapter N</option>
+        <option value="hui">第X回</option>
+        <option value="juan">卷X</option>
+        <option value="custom">✏️ 自定义</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>文件名前缀</label>
+      <input type="text" id="prefix" value="Chapter" placeholder="e.g. 第">
+    </div>
+  </div>
+
+  <div id="customRow" class="field" style="margin-bottom:20px;display:none;">
+    <label>自定义正则（每行开头匹配）</label>
+    <input type="text" id="customPattern" placeholder="e.g. ^第\d+节" value="^第\d+节">
+  </div>
+
+  <!-- Actions -->
+  <div class="btn-row">
+    <button class="btn btn-primary" onclick="splitText()">⚡ 开始分割</button>
+    <button class="btn btn-secondary" onclick="clearAll()">清空</button>
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-wrap" id="progressWrap">
+    <div class="progress-bar" id="progressBar"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="statsBar" style="display:none;">
+    <div class="stat">
+      <span class="stat-num" id="statChapters">0</span>
+      <span class="stat-lbl">章节</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num" id="statChars">0</span>
+      <span class="stat-lbl">总字数</span>
+    </div>
+    <div class="stat">
+      <span class="stat-num" id="statAvg">0</span>
+      <span class="stat-lbl">均字数</span>
+    </div>
+  </div>
+
+  <!-- Download all -->
+  <div id="downloadRow" style="display:none; margin-bottom:24px;">
+    <button class="btn btn-rust" style="width:100%;" onclick="downloadAll()">
+      📦 下载全部 ZIP
+    </button>
+  </div>
+
+  <!-- Chapters -->
+  <div id="chaptersSection" style="display:none;">
+    <div class="section-label">章节预览</div>
+    <div class="chapters-list" id="chaptersList"></div>
+  </div>
+
+  <!-- Empty -->
+  <div class="empty-state" id="emptyState">
+    <span class="empty-icon">📖</span>
+    <p>上传 .txt 文件，选择章节模式<br>点击「开始分割」即可按章节切割并下载</p>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
 
 <script>
-    const fileInput = document.getElementById('fileInput');
-    const sourceVideo = document.getElementById('sourceVideo');
-    const processBtn = document.getElementById('processBtn');
-    const saveAllBtn = document.getElementById('saveAllBtn');
-    const resultGrid = document.getElementById('resultGrid');
-    const status = document.getElementById('status');
-    const fileLabel = document.getElementById('fileLabel');
+// ── Patterns ──────────────────────────────────────────────────────────────
+const PATTERNS = {
+  zh_chapter: /^第[零一二三四五六七八九十百千万\d]+章/,
+  zh_num:     /^第\s*\d+\s*章/,
+  en_chapter: /^(Chapter|CHAPTER)\s+\d+/i,
+  hui:        /^第[零一二三四五六七八九十百千万\d]+回/,
+  juan:       /^卷[零一二三四五六七八九十百千万\d]+/,
+  auto:       /^(第[零一二三四五六七八九十百千万\d]+[章回节篇卷]|Chapter\s+\d+|卷[零一二三四五六七八九十百千万\d]+|\d+[\.\、]\s*\S)/im,
+};
 
-    let videoData = [];
+let chapters = [];
+let rawText = '';
 
-    fileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            sourceVideo.src = URL.createObjectURL(file);
-            fileLabel.innerText = "已加载预览：" + file.name.substring(0, 15) + "...";
-            fileLabel.style.color = "var(--text-main)";
-            processBtn.style.display = "block"; 
-            saveAllBtn.style.display = "none";
-            status.innerText = "准备就绪";
-        }
-    };
+function updateCustom() {
+  const v = document.getElementById('patternSelect').value;
+  document.getElementById('customRow').style.display = v === 'custom' ? 'block' : 'none';
+}
 
-    processBtn.onclick = async () => {
-        processBtn.disabled = true;
-        processBtn.innerText = "智能分析与处理中...";
-        resultGrid.innerHTML = '';
-        videoData = [];
-        
-        const zones = [
-            { n: 'Top-Left', col: 0, row: 0 }, { n: 'Top-Right', col: 1, row: 0 },
-            { n: 'Bottom-Left', col: 0, row: 1 }, { n: 'Bottom-Right', col: 1, row: 1 }
-        ];
-
-        for (let zone of zones) {
-            status.innerText = `正在处理: ${zone.n}...`;
-            const blob = await captureZone(zone.col, zone.row);
-            const url = URL.createObjectURL(blob);
-            videoData.push({ name: zone.n, url: url });
-            addPreview(zone.n, url);
-        }
-
-        status.innerText = "✨ 拆分完成，请长按播放保存";
-        processBtn.style.display = "none";
-        saveAllBtn.style.display = "block";
-    };
-
-    function captureZone(col, row) {
-        return new Promise(resolve => {
-            const w = sourceVideo.videoWidth / 2;
-            const h = sourceVideo.videoHeight / 2;
-            const canvas = Object.assign(document.createElement('canvas'), { width: w, height: h });
-            const ctx = canvas.getContext('2d');
-            const stream = canvas.captureStream(30);
-            const recorder = new MediaRecorder(stream, { mimeType: 'video/mp4' });
-            const chunks = [];
-            recorder.ondataavailable = e => chunks.push(e.data);
-            recorder.onstop = () => resolve(new Blob(chunks, { type: 'video/mp4' }));
-            sourceVideo.currentTime = 0;
-            sourceVideo.play();
-            recorder.start();
-            const draw = () => {
-                if (sourceVideo.paused || sourceVideo.ended) return recorder.stop();
-                ctx.drawImage(sourceVideo, col * w, row * h, w, h, 0, 0, w, h);
-                requestAnimationFrame(draw);
-            };
-            draw();
-        });
+function getPattern() {
+  const v = document.getElementById('patternSelect').value;
+  if (v === 'custom') {
+    try {
+      return new RegExp(document.getElementById('customPattern').value);
+    } catch(e) {
+      showToast('正则表达式有误，已使用自动识别');
+      return PATTERNS.auto;
     }
+  }
+  return PATTERNS[v] || PATTERNS.auto;
+}
 
-    function addPreview(name, url) {
-        const div = document.createElement('div');
-        div.className = 'video-item';
-        div.innerHTML = `<span class="tag">${name}</span><video src="${url}" playsinline loop muted autoplay></video>`;
-        resultGrid.appendChild(div);
+// ── File Upload ───────────────────────────────────────────────────────────
+function handleFileSelect(file) {
+  if (!file) return;
+  if (file.size > 50 * 1024 * 1024) { showToast('文件过大，请使用 50MB 以内的文件'); return; }
+
+  const zone = document.getElementById('uploadZone');
+  zone.classList.add('has-file');
+  document.getElementById('fileName').textContent = file.name;
+  document.getElementById('fileSize').textContent = formatBytes(file.size) + ' · ' + file.type || 'text/plain';
+  document.getElementById('fileInfo').classList.add('visible');
+
+  // Set prefix from filename (strip extension)
+  const baseName = file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('prefix').value = baseName;
+
+  // Try UTF-8 first, fallback to GBK for Chinese novels
+  const reader = new FileReader();
+  reader.onload = e => {
+    let text = e.target.result;
+    // Heuristic: if lots of replacement chars, retry as GBK
+    const badChars = (text.match(/\uFFFD/g) || []).length;
+    if (badChars > 10) {
+      const r2 = new FileReader();
+      r2.onload = e2 => { rawText = e2.target.result; showToast('✓ 文件读取完成（GBK 编码）'); };
+      r2.readAsText(file, 'GBK');
+    } else {
+      rawText = text;
+      showToast('✓ 文件读取完成');
     }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
 
-    saveAllBtn.onclick = () => {
-        if(videoData.length === 0) return;
-        videoData.forEach((file, i) => {
-            setTimeout(() => {
-                const a = document.createElement('a');
-                a.href = file.url;
-                a.download = `Split_${file.name}.mp4`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }, i * 1500); // 增加间隔，防iOS拦截，Safari需要更长间隔
-        });
-        status.innerText = "请长按左下角蓝色箭头下载或单独保存";
-    };
+function removeFile() {
+  rawText = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileInfo').classList.remove('visible');
+  document.getElementById('uploadZone').classList.remove('has-file');
+  clearResults();
+  showToast('已移除文件');
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1024 / 1024).toFixed(2) + ' MB';
+}
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFileSelect(file);
+});
+
+// ── Split ─────────────────────────────────────────────────────────────────
+function splitText() {
+  if (!rawText.trim()) { showToast('请先上传文本文件'); return; }
+
+  const pattern = getPattern();
+  const lines = rawText.split('\n');
+  const prefix = document.getElementById('prefix').value || 'Chapter';
+
+  showProgress(0);
+  chapters = [];
+
+  let current = null;
+
+  lines.forEach((line, i) => {
+    if (pattern.test(line.trim())) {
+      if (current) chapters.push(current);
+      current = { title: line.trim(), lines: [line] };
+    } else {
+      if (current) {
+        current.lines.push(line);
+      } else {
+        if (line.trim() !== '') {
+          if (!current) {
+            current = { title: '序章 / 前言', lines: [line] };
+          }
+        }
+      }
+    }
+    if (i % 500 === 0) showProgress(Math.round((i / lines.length) * 80));
+  });
+
+  if (current) chapters.push(current);
+  chapters = chapters.filter(c => c.lines.join('\n').trim().length > 10);
+
+  showProgress(100);
+  setTimeout(() => {
+    hideProgress();
+    renderChapters(prefix);
+  }, 400);
+}
+
+function renderChapters(prefix) {
+  if (chapters.length === 0) {
+    showToast('未识别到章节，请尝试其他模式');
+    return;
+  }
+
+  const list = document.getElementById('chaptersList');
+  list.innerHTML = '';
+  let totalChars = 0;
+
+  chapters.forEach((ch, i) => {
+    const content = ch.lines.join('\n');
+    const chars = content.replace(/\s/g, '').length;
+    totalChars += chars;
+
+    const item = document.createElement('div');
+    item.className = 'chapter-item';
+    item.style.animationDelay = Math.min(i * 30, 300) + 'ms';
+
+    const preview = content.substring(0, 300).replace(/</g, '&lt;');
+
+    item.innerHTML = `
+      <div class="chapter-header" onclick="togglePreview(this)">
+        <span class="chapter-num">${String(i+1).padStart(2,'0')}</span>
+        <span class="chapter-title">${escHtml(ch.title)}</span>
+        <span class="chapter-words">${chars.toLocaleString()}</span>
+        <button class="chapter-dl" onclick="event.stopPropagation(); downloadChapter(${i}, '${escAttr(prefix)}')" title="下载此章">⬇</button>
+      </div>
+      <div class="chapter-preview">${preview}${content.length > 300 ? '…' : ''}</div>
+    `;
+    list.appendChild(item);
+  });
+
+  document.getElementById('statChapters').textContent = chapters.length;
+  document.getElementById('statChars').textContent = totalChars > 9999
+    ? (totalChars / 10000).toFixed(1) + 'w'
+    : totalChars.toLocaleString();
+  document.getElementById('statAvg').textContent = Math.round(totalChars / chapters.length).toLocaleString();
+
+  document.getElementById('statsBar').style.display = 'flex';
+  document.getElementById('downloadRow').style.display = 'block';
+  document.getElementById('chaptersSection').style.display = 'block';
+  document.getElementById('emptyState').style.display = 'none';
+
+  showToast(`✓ 识别到 ${chapters.length} 个章节`);
+}
+
+function togglePreview(el) {
+  el.nextElementSibling.classList.toggle('open');
+}
+
+// ── Download ──────────────────────────────────────────────────────────────
+function chapterFilename(prefix, index, title) {
+  const num = String(index + 1).padStart(3, '0');
+  const safe = title.replace(/[\\/:*?"<>|]/g, '').substring(0, 40).trim();
+  return `${prefix}_${num}_${safe}.txt`;
+}
+
+function downloadChapter(index, prefix) {
+  const ch = chapters[index];
+  const content = ch.lines.join('\n');
+  const filename = chapterFilename(prefix, index, ch.title);
+  triggerDownload(content, filename);
+  showToast('已下载：' + filename.substring(0, 24) + '…');
+}
+
+async function downloadAll() {
+  if (chapters.length === 0) return;
+  const prefix = document.getElementById('prefix').value || 'Chapter';
+
+  showToast('正在打包…');
+  showProgress(10);
+
+  const zip = new JSZip();
+  chapters.forEach((ch, i) => {
+    const content = ch.lines.join('\n');
+    zip.file(chapterFilename(prefix, i, ch.title), content);
+    showProgress(10 + Math.round((i / chapters.length) * 80));
+  });
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  showProgress(100);
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${prefix}_chapters.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  setTimeout(() => {
+    hideProgress();
+    showToast(`📦 ${chapters.length} 个章节已打包下载`);
+  }, 300);
+}
+
+function triggerDownload(text, filename) {
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function clearAll() {
+  removeFile();
+}
+
+function clearResults() {
+  document.getElementById('chaptersList').innerHTML = '';
+  document.getElementById('statsBar').style.display = 'none';
+  document.getElementById('downloadRow').style.display = 'none';
+  document.getElementById('chaptersSection').style.display = 'none';
+  document.getElementById('emptyState').style.display = 'block';
+  chapters = [];
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+function showProgress(pct) {
+  document.getElementById('progressWrap').classList.add('visible');
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+function hideProgress() {
+  document.getElementById('progressWrap').classList.remove('visible');
+  document.getElementById('progressBar').style.width = '0%';
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function escAttr(s) {
+  return s.replace(/'/g,"\\'");
+}
 </script>
 </body>
 </html>
- 
