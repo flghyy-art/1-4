@@ -1,946 +1,561 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>章节切割器</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@300;400;600&family=Playfair+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<style>
-  :root {
-    --ink: #1a1208;
-    --paper: #f5f0e8;
-    --aged: #e8dfc8;
-    --rust: #c0392b;
-    --gold: #b8860b;
-    --muted: #7a6e5f;
-    --shadow: rgba(26,18,8,0.15);
-    --line: rgba(26,18,8,0.12);
-  }
-
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-
-  body {
-    background: var(--paper);
-    color: var(--ink);
-    font-family: 'Noto Serif SC', serif;
-    min-height: 100vh;
-    overflow-x: hidden;
-  }
-
-  /* Grain texture */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.6;
-  }
-
-  header {
-    position: relative;
-    padding: 48px 24px 32px;
-    border-bottom: 1px solid var(--line);
-    text-align: center;
-    background: linear-gradient(180deg, var(--aged) 0%, transparent 100%);
-  }
-
-  header::after {
-    content: '';
-    position: absolute;
-    bottom: -3px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 60px;
-    height: 2px;
-    background: var(--rust);
-  }
-
-  .logo {
-    font-family: 'Playfair Display', serif;
-    font-size: clamp(28px, 8vw, 42px);
-    font-style: italic;
-    letter-spacing: -0.5px;
-    line-height: 1;
-    color: var(--ink);
-  }
-
-  .logo span {
-    color: var(--rust);
-    font-style: normal;
-  }
-
-  .tagline {
-    margin-top: 8px;
-    font-size: 12px;
-    letter-spacing: 2.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 300;
-  }
-
-  main {
-    position: relative;
-    z-index: 1;
-    max-width: 680px;
-    margin: 0 auto;
-    padding: 32px 20px 80px;
-  }
-
-  /* Section labels */
-  .section-label {
-    font-size: 10px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .section-label::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--line);
-  }
-
-  /* Upload zone */
-  .upload-zone {
-    position: relative;
-    margin-bottom: 28px;
-    border: 2px dashed var(--line);
-    border-radius: 4px;
-    background: #fff;
-    transition: border-color 0.2s, background 0.2s;
-    cursor: pointer;
-    overflow: hidden;
-  }
-
-  .upload-zone.drag-over {
-    border-color: var(--rust);
-    background: rgba(192,57,43,0.04);
-  }
-
-  .upload-zone.has-file {
-    border-style: solid;
-    border-color: var(--rust);
-    background: rgba(192,57,43,0.03);
-  }
-
-  .upload-inner {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 24px;
-    gap: 12px;
-    pointer-events: none;
-  }
-
-  .upload-icon {
-    font-size: 40px;
-    line-height: 1;
-    transition: transform 0.2s;
-  }
-
-  .upload-zone.drag-over .upload-icon { transform: scale(1.15); }
-
-  .upload-title {
-    font-size: 15px;
-    font-weight: 400;
-    color: var(--ink);
-    text-align: center;
-    line-height: 1.5;
-  }
-
-  .upload-sub {
-    font-size: 12px;
-    color: var(--muted);
-    letter-spacing: 0.5px;
-    text-align: center;
-  }
-
-  .upload-zone input[type=file] {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    cursor: pointer;
-    font-size: 0;
-  }
-
-  /* File info card */
-  .file-info {
-    display: none;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 18px;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    margin-bottom: 20px;
-  }
-
-  .file-info.visible { display: flex; }
-
-  .file-icon-box {
-    width: 40px;
-    height: 48px;
-    background: var(--aged);
-    border-radius: 2px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-    flex-shrink: 0;
-    position: relative;
-  }
-
-  .file-icon-box::after {
-    content: '';
-    position: absolute;
-    top: 0; right: 0;
-    width: 0; height: 0;
-    border-style: solid;
-    border-width: 0 10px 10px 0;
-    border-color: transparent var(--paper) transparent transparent;
-  }
-
-  .file-meta { flex: 1; overflow: hidden; }
-
-  .file-name {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: var(--ink);
-  }
-
-  .file-size {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 3px;
-    letter-spacing: 0.5px;
-  }
-
-  .file-remove {
-    background: none;
-    border: none;
-    font-size: 18px;
-    color: var(--muted);
-    cursor: pointer;
-    padding: 4px;
-    line-height: 1;
-    flex-shrink: 0;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .file-remove:active { color: var(--rust); }
-
-  /* Settings row */
-  .settings-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 28px;
-  }
-
-  @media (max-width: 400px) {
-    .settings-row { grid-template-columns: 1fr; }
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .field label {
-    font-size: 11px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  .field input, .field select {
-    padding: 10px 12px;
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-    color: var(--ink);
-    outline: none;
-    transition: border-color 0.2s;
-    -webkit-appearance: none;
-    appearance: none;
-  }
-
-  .field input:focus, .field select:focus {
-    border-color: var(--rust);
-  }
-
-  .field select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a6e5f' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    padding-right: 32px;
-  }
-
-  /* Buttons */
-  .btn-row {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 32px;
-    flex-wrap: wrap;
-  }
-
-  .btn {
-    flex: 1;
-    min-width: 120px;
-    padding: 14px 20px;
-    border: none;
-    border-radius: 2px;
-    font-family: 'Noto Serif SC', serif;
-    font-size: 13px;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: all 0.18s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    -webkit-tap-highlight-color: transparent;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .btn-primary {
-    background: var(--ink);
-    color: var(--paper);
-  }
-
-  .btn-primary:active { background: #000; transform: scale(0.98); }
-
-  .btn-secondary {
-    background: transparent;
-    color: var(--ink);
-    border: 1px solid var(--ink);
-  }
-
-  .btn-secondary:active { background: var(--aged); transform: scale(0.98); }
-
-  .btn-rust {
-    background: var(--rust);
-    color: #fff;
-  }
-
-  .btn-rust:active { background: #a93226; transform: scale(0.98); }
-
-  .btn:disabled {
-    opacity: 0.35;
-    pointer-events: none;
-  }
-
-  /* Stats bar */
-  .stats-bar {
-    display: flex;
-    gap: 0;
-    margin-bottom: 24px;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    overflow: hidden;
-    background: #fff;
-  }
-
-  .stat {
-    flex: 1;
-    padding: 12px 8px;
-    text-align: center;
-    border-right: 1px solid var(--line);
-  }
-
-  .stat:last-child { border-right: none; }
-
-  .stat-num {
-    font-family: 'Playfair Display', serif;
-    font-size: 22px;
-    font-weight: 600;
-    color: var(--rust);
-    line-height: 1;
-    display: block;
-  }
-
-  .stat-lbl {
-    font-size: 10px;
-    letter-spacing: 1.5px;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-top: 4px;
-    display: block;
-  }
-
-  /* Chapter list */
-  .chapters-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .chapter-item {
-    background: #fff;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    overflow: hidden;
-    transition: box-shadow 0.2s;
-  }
-
-  .chapter-item:active { box-shadow: 0 2px 12px var(--shadow); }
-
-  .chapter-header {
-    display: flex;
-    align-items: center;
-    padding: 14px 16px;
-    gap: 12px;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .chapter-num {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--rust);
-    background: rgba(192,57,43,0.08);
-    padding: 3px 8px;
-    border-radius: 2px;
-    white-space: nowrap;
-    min-width: 38px;
-    text-align: center;
-    letter-spacing: 0.5px;
-  }
-
-  .chapter-title {
-    flex: 1;
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 1.4;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .chapter-words {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    white-space: nowrap;
-  }
-
-  .chapter-dl {
-    padding: 3px 6px;
-    background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 2px;
-    font-size: 16px;
-    cursor: pointer;
-    color: var(--muted);
-    transition: all 0.15s;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .chapter-dl:active { background: var(--aged); color: var(--rust); }
-
-  .chapter-preview {
-    display: none;
-    padding: 0 16px 14px;
-    font-size: 13px;
-    line-height: 1.9;
-    color: var(--muted);
-    border-top: 1px solid var(--line);
-    max-height: 160px;
-    overflow-y: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-  }
-
-  .chapter-preview.open { display: block; }
-
-  /* Empty state */
-  .empty-state {
-    text-align: center;
-    padding: 56px 20px;
-    color: var(--muted);
-  }
-
-  .empty-icon {
-    font-size: 48px;
-    margin-bottom: 16px;
-    opacity: 0.4;
-    display: block;
-  }
-
-  .empty-state p {
-    font-size: 14px;
-    line-height: 1.7;
-  }
-
-  /* Toast */
-  .toast {
-    position: fixed;
-    bottom: 32px;
-    left: 50%;
-    transform: translateX(-50%) translateY(80px);
-    background: var(--ink);
-    color: var(--paper);
-    padding: 12px 24px;
-    border-radius: 24px;
-    font-size: 13px;
-    letter-spacing: 0.5px;
-    z-index: 999;
-    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
-    white-space: nowrap;
-    pointer-events: none;
-  }
-
-  .toast.show { transform: translateX(-50%) translateY(0); }
-
-  /* Progress bar */
-  .progress-wrap {
-    height: 3px;
-    background: var(--line);
-    border-radius: 2px;
-    margin-bottom: 20px;
-    overflow: hidden;
-    display: none;
-  }
-
-  .progress-wrap.visible { display: block; }
-
-  .progress-bar {
-    height: 100%;
-    background: var(--rust);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-    width: 0%;
-  }
-
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 2px; }
-
-  /* Animations */
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .chapter-item {
-    animation: fadeIn 0.25s ease both;
-  }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>九宫格分割器</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.0/dist/ffmpeg.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111;
+      --border: #222;
+      --accent: #c8f135;
+      --text: #f0f0f0;
+      --muted: #555;
+      --radius: 4px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+      display: flex;
+      align-items: baseline;
+      gap: 16px;
+    }
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    header span {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    /* ── Main layout ── */
+    main {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 0;
+      min-height: calc(100vh - 61px);
+    }
+
+    /* ── Left: upload + preview ── */
+    .left {
+      border-right: 1px solid var(--border);
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .upload-zone {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.over {
+      border-color: var(--accent);
+      background: rgba(200,241,53,0.03);
+    }
+    .upload-zone input {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-zone .icon {
+      font-size: 2.5rem;
+      margin-bottom: 12px;
+      display: block;
+    }
+    .upload-zone p {
+      font-size: 0.95rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    .upload-zone strong {
+      color: var(--text);
+    }
+
+    /* Grid preview */
+    .grid-preview {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .grid-label {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .grid-canvas-wrap {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      border-radius: var(--radius);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+    .grid-canvas-wrap canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      cursor: default;
+    }
+
+    /* ── Right: controls ── */
+    .right {
+      padding: 32px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .section-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    /* File info */
+    .file-info {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .info-row span:first-child {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .info-row span:last-child {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text);
+    }
+
+    /* Start button */
+    .btn-primary {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      padding: 14px 24px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-radius: var(--radius);
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-primary:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn-primary:active:not(:disabled) { transform: translateY(0); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--muted);
+      cursor: not-allowed;
+    }
+
+    /* Progress */
+    .progress-wrap { display: none; }
+    .progress-status {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+      min-height: 1.2em;
+    }
+    .progress-track {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      width: 0%;
+      transition: width 0.4s cubic-bezier(.4,0,.2,1);
+    }
+
+    /* Downloads */
+    .downloads { display: none; }
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .dl-cell {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      text-decoration: none;
+      color: var(--text);
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .dl-cell:hover {
+      border-color: var(--accent);
+      background: rgba(200,241,53,0.06);
+    }
+    .dl-cell .dl-icon { font-size: 1.2rem; }
+    .dl-cell.pending {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+    .dl-cell.ready {
+      border-color: var(--accent);
+      opacity: 1;
+    }
+
+    .btn-dl-all {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 10px 16px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-radius: var(--radius);
+      cursor: pointer;
+      width: 100%;
+      margin-top: 8px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .btn-dl-all:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    /* Status badge */
+    .badge {
+      display: inline-block;
+      font-family: 'DM Mono', monospace;
+      font-size: 0.65rem;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .badge.ready { border-color: var(--accent); color: var(--accent); }
+
+    /* Responsive */
+    @media (max-width: 640px) {
+      main { grid-template-columns: 1fr; }
+      .left { border-right: none; border-bottom: 1px solid var(--border); padding: 20px; }
+      .right { padding: 20px; }
+      header { padding: 16px 20px; }
+    }
+  </style>
 </head>
+
 <body>
 
 <header>
-  <div class="logo">章节<span>切割</span></div>
-  <div class="tagline">Chapter Splitter · Auto Download</div>
+  <h1>九宫格分割器</h1>
+  <span>Video Grid Splitter · 3×3 · Browser Native</span>
+  <span id="ffmpegBadge" class="badge" style="margin-left:auto">⟳ 加载中</span>
 </header>
 
 <main>
+  <!-- Left -->
+  <section class="left">
 
-  <!-- Upload -->
-  <div class="section-label">上传文件</div>
-  <div class="upload-zone" id="uploadZone">
-    <input type="file" id="fileInput" accept=".txt,.md,.text" onchange="handleFileSelect(this.files[0])">
-    <div class="upload-inner">
-      <span class="upload-icon">📄</span>
-      <div class="upload-title">点击选择文件<br>或将文件拖拽至此</div>
-      <div class="upload-sub">支持 .txt · .md · .text · 最大 50MB</div>
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept="video/*" />
+      <span class="icon">▤</span>
+      <p><strong>点击或拖入视频文件</strong><br>支持 MP4 · MOV · AVI 等格式</p>
     </div>
-  </div>
 
-  <!-- File info -->
-  <div class="file-info" id="fileInfo">
-    <div class="file-icon-box">📄</div>
-    <div class="file-meta">
-      <div class="file-name" id="fileName">—</div>
-      <div class="file-size" id="fileSize">—</div>
+    <div class="grid-preview" id="gridPreview">
+      <span class="grid-label">预览 — 分割效果</span>
+      <div class="grid-canvas-wrap" id="gridCanvases"></div>
     </div>
-    <button class="file-remove" onclick="removeFile()" title="移除文件">✕</button>
-  </div>
 
-  <!-- Settings -->
-  <div class="settings-row">
-    <div class="field">
-      <label>章节模式</label>
-      <select id="patternSelect" onchange="updateCustom()">
-        <option value="auto">🔍 自动识别</option>
-        <option value="zh_chapter">第X章（中文数字）</option>
-        <option value="zh_num">第N章（阿拉伯数字）</option>
-        <option value="en_chapter">Chapter N</option>
-        <option value="hui">第X回</option>
-        <option value="juan">卷X</option>
-        <option value="custom">✏️ 自定义</option>
-      </select>
+  </section>
+
+  <!-- Right -->
+  <section class="right">
+
+    <!-- File info -->
+    <div>
+      <div class="section-title">文件信息</div>
+      <div class="file-info" id="fileInfo">
+        <div class="info-row"><span>文件名</span><span id="infoName">—</span></div>
+        <div class="info-row"><span>大小</span><span id="infoSize">—</span></div>
+        <div class="info-row"><span>分辨率</span><span id="infoDim">—</span></div>
+        <div class="info-row"><span>单格尺寸</span><span id="infoCell">—</span></div>
+      </div>
     </div>
-    <div class="field">
-      <label>文件名前缀</label>
-      <input type="text" id="prefix" value="Chapter" placeholder="e.g. 第">
+
+    <!-- Start -->
+    <button class="btn-primary" id="splitBtn" disabled>开始分割</button>
+
+    <!-- Progress -->
+    <div class="progress-wrap" id="progressWrap">
+      <div class="section-title">进度</div>
+      <div class="progress-status" id="progressStatus">准备中...</div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
     </div>
-  </div>
 
-  <div id="customRow" class="field" style="margin-bottom:20px;display:none;">
-    <label>自定义正则（每行开头匹配）</label>
-    <input type="text" id="customPattern" placeholder="e.g. ^第\d+节" value="^第\d+节">
-  </div>
-
-  <!-- Actions -->
-  <div class="btn-row">
-    <button class="btn btn-primary" onclick="splitText()">⚡ 开始分割</button>
-    <button class="btn btn-secondary" onclick="clearAll()">清空</button>
-  </div>
-
-  <!-- Progress -->
-  <div class="progress-wrap" id="progressWrap">
-    <div class="progress-bar" id="progressBar"></div>
-  </div>
-
-  <!-- Stats -->
-  <div class="stats-bar" id="statsBar" style="display:none;">
-    <div class="stat">
-      <span class="stat-num" id="statChapters">0</span>
-      <span class="stat-lbl">章节</span>
+    <!-- Downloads -->
+    <div class="downloads" id="downloadsSection">
+      <div class="section-title">下载</div>
+      <div class="download-grid" id="downloadGrid"></div>
+      <button class="btn-dl-all" id="dlAllBtn" style="display:none">↓ 全部下载</button>
     </div>
-    <div class="stat">
-      <span class="stat-num" id="statChars">0</span>
-      <span class="stat-lbl">总字数</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num" id="statAvg">0</span>
-      <span class="stat-lbl">均字数</span>
-    </div>
-  </div>
 
-  <!-- Download all -->
-  <div id="downloadRow" style="display:none; margin-bottom:24px;">
-    <button class="btn btn-rust" style="width:100%;" onclick="downloadAll()">
-      📦 下载全部 ZIP
-    </button>
-  </div>
-
-  <!-- Chapters -->
-  <div id="chaptersSection" style="display:none;">
-    <div class="section-label">章节预览</div>
-    <div class="chapters-list" id="chaptersList"></div>
-  </div>
-
-  <!-- Empty -->
-  <div class="empty-state" id="emptyState">
-    <span class="empty-icon">📖</span>
-    <p>上传 .txt 文件，选择章节模式<br>点击「开始分割」即可按章节切割并下载</p>
-  </div>
-
+  </section>
 </main>
 
-<div class="toast" id="toast"></div>
-
 <script>
-// ── Patterns ──────────────────────────────────────────────────────────────
-// 允许行首有可选括号前缀（如【第一章】[\第一章\]）
-const PATTERNS = {
-  zh_chapter: /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+章/,
-  zh_num:     /^[\[【〔（(]?第\s*\d+\s*章/,
-  en_chapter: /^Chapter\s*\d+/i,
-  hui:        /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+回/,
-  juan:       /^[\[【〔（(]?卷[零一二三四五六七八九十百千万\d]+/,
-  auto:       /^[\[【〔（(]?第[零一二三四五六七八九十百千万\d]+[章回节篇卷]|^Chapter\s*\d+|^[\[【〔（(]?卷[零一二三四五六七八九十百千万\d]+|^\d+[\.、]\s*\S/i,
-};
+  const { createFFmpeg, fetchFile } = FFmpeg;
+  const ffmpeg = createFFmpeg({
+    log: false,
+    corePath: 'https://unpkg.com/@ffmpeg/core@0.11.0/dist/ffmpeg-core.js'
+  });
 
-let chapters = [];
-let rawText = '';
+  const NAMES = [
+    '左上','中上','右上',
+    '左中','正中','右中',
+    '左下','中下','右下'
+  ];
 
-function updateCustom() {
-  const v = document.getElementById('patternSelect').value;
-  document.getElementById('customRow').style.display = v === 'custom' ? 'block' : 'none';
-}
+  let selectedFile = null;
+  let videoW = 0, videoH = 0;
+  let isReady = false;
+  const downloadURLs = [];
 
-function getPattern() {
-  const v = document.getElementById('patternSelect').value;
-  if (v === 'custom') {
+  // ── Load FFmpeg ──────────────────────────────
+  (async () => {
     try {
-      return new RegExp(document.getElementById('customPattern').value);
+      await ffmpeg.load();
+      isReady = true;
+      const badge = document.getElementById('ffmpegBadge');
+      badge.textContent = '✓ FFmpeg 就绪';
+      badge.classList.add('ready');
+      tryEnableBtn();
     } catch(e) {
-      showToast('正则表达式有误，已使用自动识别');
-      return PATTERNS.auto;
+      document.getElementById('ffmpegBadge').textContent = '✗ 加载失败';
+      console.error(e);
     }
-  }
-  return PATTERNS[v] || PATTERNS.auto;
-}
+  })();
 
-// ── File Upload ───────────────────────────────────────────────────────────
-function handleFileSelect(file) {
-  if (!file) return;
-  if (file.size > 50 * 1024 * 1024) { showToast('文件过大，请使用 50MB 以内的文件'); return; }
-
+  // ── Upload zone ──────────────────────────────
   const zone = document.getElementById('uploadZone');
-  zone.classList.add('has-file');
-  document.getElementById('fileName').textContent = file.name;
-  document.getElementById('fileSize').textContent = formatBytes(file.size) + ' · ' + file.type || 'text/plain';
-  document.getElementById('fileInfo').classList.add('visible');
+  const fileInput = document.getElementById('fileInput');
 
-  // Set prefix from filename (strip extension)
-  const baseName = file.name.replace(/\.[^.]+$/, '');
-  document.getElementById('prefix').value = baseName;
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('video/')) loadFile(f);
+  });
+  fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
 
-  // Try UTF-8 first, fallback to GBK for Chinese novels
-  const reader = new FileReader();
-  reader.onload = e => {
-    let text = e.target.result;
-    // Heuristic: if lots of replacement chars, retry as GBK
-    const badChars = (text.match(/\uFFFD/g) || []).length;
-    if (badChars > 10) {
-      const r2 = new FileReader();
-      r2.onload = e2 => { rawText = e2.target.result; showToast('✓ 文件读取完成（GBK 编码）'); };
-      r2.readAsText(file, 'GBK');
-    } else {
-      rawText = text;
-      showToast('✓ 文件读取完成');
-    }
-  };
-  reader.readAsText(file, 'UTF-8');
-}
+  function loadFile(file) {
+    selectedFile = file;
+    downloadURLs.length = 0;
+    document.getElementById('downloadsSection').style.display = 'none';
+    document.getElementById('progressWrap').style.display = 'none';
+    document.getElementById('dlAllBtn').style.display = 'none';
 
-function removeFile() {
-  rawText = '';
-  document.getElementById('fileInput').value = '';
-  document.getElementById('fileInfo').classList.remove('visible');
-  document.getElementById('uploadZone').classList.remove('has-file');
-  clearResults();
-  showToast('已移除文件');
-}
+    // File info
+    document.getElementById('infoName').textContent = file.name.length > 18 ? file.name.slice(0,16)+'…' : file.name;
+    document.getElementById('infoSize').textContent = formatSize(file.size);
+    document.getElementById('fileInfo').style.display = 'flex';
+    document.getElementById('fileInfo').style.flexDirection = 'column';
 
-function formatBytes(b) {
-  if (b < 1024) return b + ' B';
-  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
-  return (b / 1024 / 1024).toFixed(2) + ' MB';
-}
+    // Load video for dimensions + preview
+    const video = document.createElement('video');
+    video.src = URL.createObjectURL(file);
+    video.muted = true;
+    video.playsInline = true;
+    video.addEventListener('loadedmetadata', () => {
+      videoW = video.videoWidth;
+      videoH = video.videoHeight;
+      const cw = Math.floor(videoW / 3);
+      const ch = Math.floor(videoH / 3);
+      document.getElementById('infoDim').textContent = `${videoW} × ${videoH}`;
+      document.getElementById('infoCell').textContent = `${cw} × ${ch}`;
+      video.currentTime = 1;
+    });
+    video.addEventListener('seeked', () => drawGrid(video));
+    video.addEventListener('error', () => { video.currentTime = 0; });
+  }
 
-// Drag & drop
-const zone = document.getElementById('uploadZone');
-zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-zone.addEventListener('drop', e => {
-  e.preventDefault();
-  zone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) handleFileSelect(file);
-});
+  function drawGrid(video) {
+    const cw = Math.floor(video.videoWidth / 3);
+    const ch = Math.floor(video.videoHeight / 3);
+    const wrap = document.getElementById('gridCanvases');
+    wrap.innerHTML = '';
 
-// ── Split ─────────────────────────────────────────────────────────────────
-function splitText() {
-  if (!rawText.trim()) { showToast('请先上传文本文件'); return; }
-
-  // 修复1：剥离 BOM；修复2：统一换行符（\r\n 和 \r 都转成 \n）
-  const normalized = rawText
-    .replace(/^\uFEFF/, '')       // 剥离 UTF-8 BOM
-    .replace(/\r\n/g, '\n')       // Windows 换行
-    .replace(/\r/g, '\n');        // 旧 Mac 换行
-
-  const pattern = getPattern();
-  const lines = normalized.split('\n');
-  const prefix = document.getElementById('prefix').value || 'Chapter';
-
-  showProgress(0);
-  chapters = [];
-  let current = null;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (trimmed && pattern.test(trimmed)) {
-      // 新章节开始：先保存上一章
-      if (current) chapters.push(current);
-      current = { title: trimmed, lines: [line] };
-    } else {
-      if (current) {
-        // 当前章节内容继续追加（包括空行，保留原格式）
-        current.lines.push(line);
-      } else if (trimmed) {
-        // 第一个章节标记之前的内容 → 前言
-        current = { title: '前言', lines: [line] };
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, col * cw, row * ch, cw, ch, 0, 0, cw, ch);
+        wrap.appendChild(canvas);
       }
-      // 空行且 current 为 null 时直接跳过（文件开头空白行）
     }
 
-    if (i % 1000 === 0) showProgress(Math.round((i / lines.length) * 80));
+    const preview = document.getElementById('gridPreview');
+    preview.style.display = 'flex';
+    tryEnableBtn();
   }
 
-  if (current) chapters.push(current);
-  // 修复3：只过滤完全空的章节，不因内容短而丢弃
-  chapters = chapters.filter(c => c.lines.some(l => l.trim().length > 0));
-
-  showProgress(100);
-  setTimeout(() => {
-    hideProgress();
-    renderChapters(prefix);
-  }, 400);
-}
-
-function renderChapters(prefix) {
-  if (chapters.length === 0) {
-    showToast('未识别到章节，请尝试其他模式');
-    return;
+  function tryEnableBtn() {
+    document.getElementById('splitBtn').disabled = !(isReady && selectedFile && videoW > 0);
   }
 
-  const list = document.getElementById('chaptersList');
-  list.innerHTML = '';
-  let totalChars = 0;
+  // ── Split ────────────────────────────────────
+  document.getElementById('splitBtn').addEventListener('click', async () => {
+    if (!selectedFile || !isReady) return;
 
-  chapters.forEach((ch, i) => {
-    const content = ch.lines.join('\n');
-    const chars = content.replace(/\s/g, '').length;
-    totalChars += chars;
+    const btn = document.getElementById('splitBtn');
+    btn.disabled = true;
 
-    const item = document.createElement('div');
-    item.className = 'chapter-item';
-    item.style.animationDelay = Math.min(i * 30, 300) + 'ms';
+    const progressWrap = document.getElementById('progressWrap');
+    const progressStatus = document.getElementById('progressStatus');
+    const progressFill = document.getElementById('progressFill');
+    const downloadsSection = document.getElementById('downloadsSection');
+    const downloadGrid = document.getElementById('downloadGrid');
 
-    const preview = content.substring(0, 300).replace(/</g, '&lt;');
+    progressWrap.style.display = 'block';
+    downloadsSection.style.display = 'block';
+    downloadGrid.innerHTML = '';
+    downloadURLs.length = 0;
 
-    item.innerHTML = `
-      <div class="chapter-header" onclick="togglePreview(this)">
-        <span class="chapter-num">${String(i+1).padStart(2,'0')}</span>
-        <span class="chapter-title">${escHtml(ch.title)}</span>
-        <span class="chapter-words">${chars.toLocaleString()}</span>
-        <button class="chapter-dl" onclick="event.stopPropagation(); downloadChapter(${i}, '${escAttr(prefix)}')" title="下载此章">⬇</button>
-      </div>
-      <div class="chapter-preview">${preview}${content.length > 300 ? '…' : ''}</div>
-    `;
-    list.appendChild(item);
+    // Build placeholder cells
+    const cells = [];
+    for (let i = 0; i < 9; i++) {
+      const el = document.createElement('div');
+      el.className = 'dl-cell pending';
+      el.innerHTML = `<span class="dl-icon">⋯</span><span>${NAMES[i]}</span>`;
+      downloadGrid.appendChild(el);
+      cells.push(el);
+    }
+
+    const cw = Math.floor(videoW / 3);
+    const ch = Math.floor(videoH / 3);
+
+    try {
+      progressStatus.textContent = '写入文件中...';
+      ffmpeg.FS('writeFile', 'input.mp4', await fetchFile(selectedFile));
+
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          const idx = row * 3 + col;
+          const outName = `out_${row}_${col}.mp4`;
+
+          progressStatus.textContent = `处理第 ${idx + 1} / 9 片段 — ${NAMES[idx]}`;
+          progressFill.style.width = `${(idx / 9) * 100}%`;
+
+          await ffmpeg.run(
+            '-i', 'input.mp4',
+            '-vf', `crop=${cw}:${ch}:${col * cw}:${row * ch}`,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-c:a', 'copy',
+            outName
+          );
+
+          const data = ffmpeg.FS('readFile', outName);
+          const url = URL.createObjectURL(new Blob([data.buffer], { type: 'video/mp4' }));
+          downloadURLs.push({ url, name: `${NAMES[idx]}.mp4` });
+
+          // Update cell to ready
+          const cell = cells[idx];
+          cell.className = 'dl-cell ready';
+          cell.innerHTML = `<span class="dl-icon">↓</span><span>${NAMES[idx]}</span>`;
+          cell.style.cursor = 'pointer';
+          cell.addEventListener('click', () => triggerDownload(url, `${NAMES[idx]}.mp4`));
+
+          ffmpeg.FS('unlink', outName);
+        }
+      }
+
+      ffmpeg.FS('unlink', 'input.mp4');
+      progressFill.style.width = '100%';
+      progressStatus.textContent = '✓ 全部完成';
+
+      document.getElementById('dlAllBtn').style.display = 'block';
+    } catch(err) {
+      progressStatus.textContent = '✗ 处理出错：' + err.message;
+      console.error(err);
+    }
+
+    btn.disabled = false;
   });
 
-  document.getElementById('statChapters').textContent = chapters.length;
-  document.getElementById('statChars').textContent = totalChars > 9999
-    ? (totalChars / 10000).toFixed(1) + 'w'
-    : totalChars.toLocaleString();
-  document.getElementById('statAvg').textContent = Math.round(totalChars / chapters.length).toLocaleString();
-
-  document.getElementById('statsBar').style.display = 'flex';
-  document.getElementById('downloadRow').style.display = 'block';
-  document.getElementById('chaptersSection').style.display = 'block';
-  document.getElementById('emptyState').style.display = 'none';
-
-  showToast(`✓ 识别到 ${chapters.length} 个章节`);
-}
-
-function togglePreview(el) {
-  el.nextElementSibling.classList.toggle('open');
-}
-
-// ── Download ──────────────────────────────────────────────────────────────
-function chapterFilename(prefix, index, title) {
-  const num = String(index + 1).padStart(3, '0');
-  const safe = title.replace(/[\\/:*?"<>|]/g, '').substring(0, 40).trim();
-  return `${prefix}_${num}_${safe}.txt`;
-}
-
-function downloadChapter(index, prefix) {
-  const ch = chapters[index];
-  const content = ch.lines.join('\n');
-  const filename = chapterFilename(prefix, index, ch.title);
-  triggerDownload(content, filename);
-  showToast('已下载：' + filename.substring(0, 24) + '…');
-}
-
-async function downloadAll() {
-  if (chapters.length === 0) return;
-  const prefix = document.getElementById('prefix').value || 'Chapter';
-
-  showToast('正在打包…');
-  showProgress(10);
-
-  const zip = new JSZip();
-  chapters.forEach((ch, i) => {
-    const content = ch.lines.join('\n');
-    zip.file(chapterFilename(prefix, i, ch.title), content);
-    showProgress(10 + Math.round((i / chapters.length) * 80));
+  // ── Download helpers ─────────────────────────
+  document.getElementById('dlAllBtn').addEventListener('click', () => {
+    downloadURLs.forEach(({ url, name }, i) => {
+      setTimeout(() => triggerDownload(url, name), i * 300);
+    });
   });
 
-  const blob = await zip.generateAsync({ type: 'blob' });
-  showProgress(100);
+  function triggerDownload(url, name) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.click();
+  }
 
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${prefix}_chapters.zip`;
-  a.click();
-  URL.revokeObjectURL(url);
-
-  setTimeout(() => {
-    hideProgress();
-    showToast(`📦 ${chapters.length} 个章节已打包下载`);
-  }, 300);
-}
-
-function triggerDownload(text, filename) {
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-function clearAll() {
-  removeFile();
-}
-
-function clearResults() {
-  document.getElementById('chaptersList').innerHTML = '';
-  document.getElementById('statsBar').style.display = 'none';
-  document.getElementById('downloadRow').style.display = 'none';
-  document.getElementById('chaptersSection').style.display = 'none';
-  document.getElementById('emptyState').style.display = 'block';
-  chapters = [];
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(t._timer);
-  t._timer = setTimeout(() => t.classList.remove('show'), 2800);
-}
-
-function showProgress(pct) {
-  document.getElementById('progressWrap').classList.add('visible');
-  document.getElementById('progressBar').style.width = pct + '%';
-}
-
-function hideProgress() {
-  document.getElementById('progressWrap').classList.remove('visible');
-  document.getElementById('progressBar').style.width = '0%';
-}
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-function escAttr(s) {
-  return s.replace(/'/g,"\\'");
-}
+  function formatSize(bytes) {
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
 </script>
+
 </body>
 </html>
