@@ -184,9 +184,12 @@
       videoW = video.videoWidth; videoH = video.videoHeight;
       document.getElementById('infoDim').textContent = `${videoW} × ${videoH}`;
       document.getElementById('infoCell').textContent = `${Math.floor(videoW/3)} × ${Math.floor(videoH/3)}`;
-      video.currentTime = 1;
+      tryEnableBtn(); // 立即激活按钮，不等预览
+      video.currentTime = 1; // 尝试生成预览（可能在iOS上失败，但无所谓）
     });
+    // 能截帧就显示预览，Safari 上可能不触发也没关系
     video.addEventListener('seeked', () => drawGrid(video));
+    video.addEventListener('canplay', () => { if (videoW > 0) drawGrid(video); });
   }
 
   function drawGrid(video) {
